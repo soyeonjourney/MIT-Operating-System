@@ -5,7 +5,6 @@
 #define MAXNUM 35
 
 void sieve(int *pleft) {
-    int pright[2];
     int prime, num;
 
     close(pleft[1]);
@@ -15,23 +14,28 @@ void sieve(int *pleft) {
     }
     printf("prime %d\n", prime);
 
-    pipe(pright);
-    if (fork() == 0) {
-        // child
-        sieve(pright);
-    } else {
-        // parent
-        close(pright[0]);
-        while (read(pleft[0], &num, sizeof(num)) == sizeof(num)) {
-            if (num % prime != 0) {
-                if (write(pright[1], &num, sizeof(num)) != sizeof(num)) {
-                    fprintf(2, "write error\n");
-                    exit(1);
+    // if there is no more number, exit
+    if (read(pleft[0], &num, sizeof(num)) == sizeof(num)) {
+        int pright[2];
+        pipe(pright);
+        if (fork() == 0) {
+            // child
+            sieve(pright);
+        } else {
+            // parent
+            close(pright[0]);
+            // do-while loop makes sure that the first number is written
+            do {
+                if (num % prime != 0) {
+                    if (write(pright[1], &num, sizeof(num)) != sizeof(num)) {
+                        fprintf(2, "write error\n");
+                        exit(1);
+                    }
                 }
-            }
+            } while (read(pleft[0], &num, sizeof(num)) == sizeof(num));
+            close(pright[1]);
+            wait(0);
         }
-        close(pright[1]);
-        wait(0);
     }
 
     exit(0);
