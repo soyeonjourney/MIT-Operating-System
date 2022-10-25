@@ -437,3 +437,28 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     return -1;
   }
 }
+
+static char* prefixdot[3] = {".. .. ..", ".. ..", ".."};
+
+void
+pgtblprint(pagetable_t pagetable, int level)
+{
+  if(level > 2 || level < 0)
+    return;
+
+  for(int i = 0; i < 512; i++){
+    pte_t pte = pagetable[i];
+    if(pte & PTE_V){
+      uint64 child = PTE2PA(pte);
+      printf("%s%d: pte %p pa %p\n", prefixdot[level], i, pte, child);
+      pgtblprint((pagetable_t)child, level - 1);
+    }
+  }
+}
+
+void
+vmprint(pagetable_t pagetable)
+{
+  printf("page table %p\n", pagetable);
+  pgtblprint(pagetable, 2);
+}
