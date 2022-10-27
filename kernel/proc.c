@@ -138,6 +138,7 @@ found:
     release(&p->lock);
     return 0;
   }
+  p->usyscall->pid = p->pid;
 
   // An empty user page table.
   p->pagetable = proc_pagetable(p);
@@ -146,7 +147,6 @@ found:
     release(&p->lock);
     return 0;
   }
-  p->usyscall->pid = p->pid;
 
   // Set up new context to start executing at forkret,
   // which returns to user space.
