@@ -81,9 +81,11 @@ usertrap(void)
     if(p->interval > 0) {
       p->passed_ticks++;
       // if the process has used up its time slice
-      if(p->passed_ticks >= p->interval) {
+      if(p->passed_ticks >= p->interval && !p->in_alarm) {
         p->passed_ticks = 0;
+        memmove(p->backup_trapframe, p->trapframe, sizeof(struct trapframe));
         p->trapframe->epc = (uint64)p->handler;  // jump to the handler
+        p->in_alarm = 1;  // set the flag to avoid re-entering the alarm
       }
     }
     yield();

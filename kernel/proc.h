@@ -109,4 +109,6 @@ struct proc {
   int interval;                // alarm interval
   void (*handler)(void);       // alarm handler
   int passed_ticks;            // passed ticks since last alarm
+  struct trapframe *backup_trapframe;  // backup trapframe for alarm
+  int in_alarm;                // whether in alarm
 };
