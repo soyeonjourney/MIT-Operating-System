@@ -335,7 +335,7 @@ grade:
 	@echo $(MAKE) clean
 	@$(MAKE) clean || \
           (echo "'make clean' failed.  HINT: Do you have another running instance of xv6?" && exit 1)
-	./grade-lab-$(LAB) $(GRADEFLAGS)
+	sudo python3 ./grade-lab-$(LAB) $(GRADEFLAGS)
 
 ##
 ## FOR web handin
