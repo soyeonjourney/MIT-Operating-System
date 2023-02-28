@@ -23,10 +23,16 @@ struct {
   struct run *freelist;
 } kmem;
 
+struct {
+  struct spinlock lock;
+  int array[MAXREFINDEX];
+} refcount;
+
 void
 kinit()
 {
   initlock(&kmem.lock, "kmem");
+  initlock(&refcount.lock, "refcount");
   freerange(end, (void*)PHYSTOP);
 }
 
@@ -35,8 +41,12 @@ freerange(void *pa_start, void *pa_end)
 {
   char *p;
   p = (char*)PGROUNDUP((uint64)pa_start);
-  for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE)
+  for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE){
+    acquire(&refcount.lock);
+    refcount.array[PG2REFINDEX(p)] = 1;
+    release(&refcount.lock);
     kfree(p);
+  }
 }
 
 // Free the page of physical memory pointed at by pa,
@@ -47,19 +57,32 @@ void
 kfree(void *pa)
 {
   struct run *r;
+  int rfidx, rfcnt;
 
   if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
 
-  // Fill with junk to catch dangling refs.
-  memset(pa, 1, PGSIZE);
+  acquire(&refcount.lock);
+  rfidx = PG2REFINDEX(pa);
+  if(refcount.array[rfidx] > 0){
+    refcount.array[rfidx]--;
+    rfcnt = refcount.array[rfidx];
+  } else {
+    panic("kfree: refcount is 0");
+  }
+  release(&refcount.lock);
 
-  r = (struct run*)pa;
+  if(rfcnt == 0){
+    // Fill with junk to catch dangling refs.
+    memset(pa, 1, PGSIZE);
 
-  acquire(&kmem.lock);
-  r->next = kmem.freelist;
-  kmem.freelist = r;
-  release(&kmem.lock);
+    r = (struct run*)pa;
+
+    acquire(&kmem.lock);
+    r->next = kmem.freelist;
+    kmem.freelist = r;
+    release(&kmem.lock);
+  }
 }
 
 // Allocate one 4096-byte page of physical memory.
@@ -72,11 +95,27 @@ kalloc(void)
 
   acquire(&kmem.lock);
   r = kmem.freelist;
-  if(r)
+  if(r){
     kmem.freelist = r->next;
+  }
   release(&kmem.lock);
 
-  if(r)
+  if(r){
     memset((char*)r, 5, PGSIZE); // fill with junk
+    acquire(&refcount.lock);
+    if(refcount.array[PG2REFINDEX(r)] > 0)
+      panic("kalloc: refcount is not 0");
+    refcount.array[PG2REFINDEX(r)] = 1;
+    release(&refcount.lock);
+  }
   return (void*)r;
+}
+
+// API for refcount increment
+void
+krefinc(void *pa)
+{
+  acquire(&refcount.lock);
+  refcount.array[PG2REFINDEX(pa)]++;
+  release(&refcount.lock);
 }

@@ -329,6 +329,9 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
       // kfree(mem);
       goto err;
     }
+
+    // increase ref count of page
+    krefinc((void *)pa);
   }
   return 0;
 
@@ -360,6 +363,14 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
+
+    // in case of COW
+    if(cowcheck(pagetable, va0)){
+      if(cowalloc(pagetable, va0) < 0){
+        return -1;
+      }
+    }
+
     pa0 = walkaddr(pagetable, va0);
     if(pa0 == 0)
       return -1;
