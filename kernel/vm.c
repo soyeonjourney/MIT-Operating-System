@@ -308,7 +308,7 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
+  // char *mem;
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
@@ -316,12 +316,17 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     if((*pte & PTE_V) == 0)
       panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
+
+    // clear PTE_W and add PTE_COW for both parent and child
+    *pte &= ~PTE_W;
+    *pte |= PTE_COW;
     flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
+
+    // if((mem = kalloc()) == 0)
+    //   goto err;
+    // memmove(mem, (char*)pa, PGSIZE);
+    if(mappages(new, i, PGSIZE, (uint64)pa, flags) != 0){
+      // kfree(mem);
       goto err;
     }
   }
@@ -436,4 +441,49 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   } else {
     return -1;
   }
+}
+
+// Check if the store page fault is caused by COW.
+// Return 1 if so, 0 otherwise.
+int
+cowcheck(pagetable_t pgtbl, uint64 va)
+{
+  // check
+  if(va >= MAXVA)
+    return 0;
+  pte_t* pte = walk(pgtbl, va, 0);
+  if(pte == 0)
+    return 0;
+  if((*pte & PTE_V) == 0 || (*pte & PTE_U) == 0 || (*pte & PTE_COW) == 0)
+    return 0;
+  return 1;
+}
+
+// If so, allocate a new page for the faulting address.
+// Return 0 on success, -1 on error.
+int
+cowalloc(pagetable_t pgtbl, uint64 va)
+{
+  pte_t* pte = walk(pgtbl, va, 0);
+
+  // allocate
+  uint64 pa = PTE2PA(*pte);
+  char* mem = kalloc();
+  if(mem == 0){
+    panic("cowalloc: kalloc failed");
+    return -1;
+  }
+  memmove((void*)mem, (void*)pa, PGSIZE);
+
+  // map
+  uint flags = PTE_FLAGS(*pte);
+  flags |= PTE_W;
+  flags &= ~PTE_COW;
+  uvmunmap(pgtbl, PGROUNDDOWN(va), 1, 1); // remove old mapping and kfree(pa)
+  if(mappages(pgtbl, PGROUNDDOWN(va), PGSIZE, (uint64)mem, flags) < 0){
+    kfree((void*)mem);
+    return -1;
+  }
+
+  return 0;
 }
